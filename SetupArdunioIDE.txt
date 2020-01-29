@@ -29,7 +29,9 @@ https://github.com/bblanchon/ArduinoJson
 download und als ZIP-Bibliothek importieren
 d) timezone
 https://github.com/JChristensen/Timezone
-e) Ticker.h fix (ESP8266 library, falls noch nicht behoben) Zeile 74: stumpf reinterpret_cast -> (void*) ersetzen
+e) time
+https://github.com/PaulStoffregen/Time
+f) Ticker.h fix (ESP8266 library, falls noch nicht behoben) Zeile 74: stumpf reinterpret_cast -> (void*) ersetzen
 
 6) Zusammenbau (bezieht sich auf eine ältere Platine, ggfs. bereits gefixt)
 - einige Bauteile sind nicht beschriftet, lassen sich aber mit Schaltplan und Layout zuordnen
