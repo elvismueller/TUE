@@ -1,0 +1,56 @@
+Nachfolgend in Stichpunkten wie das Projekt aufgesetzt wird
+
+1) Ardunio IDE installieren (https://www.arduino.cc)
+
+2) ggfs. Treiber für CP210x Board installieren (war schon dabei beim Setup)
+
+3) Ardunio Boardmanager erweitern
+-- unter File->Preferences weitere Suchfolder hinzufügen
+https://arduino.esp8266.com/stable/package_esp8266com_index.json
+
+weitere Infos siehe:
+https://github.com/arduino/Arduino/wiki/Unofficial-list-of-3rd-party-boards-support-urls
+----> ESP8266 Community
+https://www.arduino.cc/en/Guide/Libraries
+
+4) Das .ino file im Ardunio Folder platzieren. Üblich ist [user]/Dokumente/Ardunio
+-> zip download von GitHub und in dem Folder entpacken
+eventuell geht auch git clone direkt, muss ich noch probieren
+
+5) fehlende Teile/Libraries nachinstallieren
+a) TickerScheduler.h
+https://github.com/Toshik/TickerScheduler
+download und als ZIP-Bibliothek importieren
+b) Wifi-Manager
+https://github.com/tzapu/WiFiManager
+download und als ZIP-Bibliothek importieren
+c) ArdunioJson
+https://github.com/bblanchon/ArduinoJson
+download und als ZIP-Bibliothek importieren
+d) timezone
+https://github.com/JChristensen/Timezone
+e) Ticker.h fix (ESP8266 library, falls noch nicht behoben) Zeile 74: stumpf reinterpret_cast -> (void*) ersetzen
+
+6) Zusammenbau (bezieht sich auf eine ältere Platine, ggfs. bereits gefixt)
+- einige Bauteile sind nicht beschriftet, lassen sich aber mit Schaltplan und Layout zuordnen
+- Kondensatoren um die IC's später anlöten, Abstand ist etwas knapp 
+- Chinch Buchse passt nicht ganz, ggfs. anfeilen
+- USB Buchse Nippel unten abschneiden
+- Batterie passt mit Druck, ggfs. Klebebandlasche drunter legen zum rausnehmen, Bateriehalter als letztes verlöten!
+
+6) ESP flashen 
+Es funktioniert fallweise nicht direkt aus der IDE weil die Resetleitung nicht automatisch gezogen wird. Das NodeMCU Board hat dafür eine Hilfsschaltung auf dem Board, die TUE nicht. 
+Zieht man die Reset Leitung im richtigen Moment manuell klappts meist doch. 
+
+Setup
+- AZ-Delivery FTDI UART-Adapter
+- GPIO0 muss auf GND für flashen, macht der Adapter nicht automatisch
+- 3.3V oder 5V ist egal, es wird der Spannungsregler auf dem TUE benutzt
+- https://www.instructables.com/id/FTDI-ESP8266-Definitive-Wiring/
+- https://www.mikrocontroller-elektronik.de/esp12e-tutorial-einstieg-mit-dem-esp8266-modul/
+
+Alternativ kann man die Binarys auch mit dem nodemcu-flasher hochladen. Auch hier muss der Reset manuell erfolgen, aber ist nicht so kritisch.
+https://github.com/nodemcu/nodemcu-flasher
+
+Sonst noch was?
+https://www.mikrocontroller-elektronik.de/nodemcu-esp8266-tutorial-wlan-board-arduino-ide/
