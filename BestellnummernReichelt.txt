@@ -1,0 +1,55 @@
+Bestellnummern Reichelt
+
+Anzahl bitte gegenchecken! SMD-Bauteile verliert man auch schnell mal, ggfs. großzügiger bestellen! ;-)
+
+Anzahl	Best-Nr.           Beschreibung
+
+1	LQH3C 1,0µ         SMD-Induktivität, 1210, Murata Chip Coil, 1,0µ
+1	L-242418FPS 22µ    Chip-Induktivität, 242418FPS, 22 µH
+	L-PIS2816 22µ      SMD-Power-Induktivität, PIS2816, Ferrit, 22µ (Alternative!)
+	KOA LPC4045ATE22   SMD-Power-Induktivität, 22 µH (Alternative!)
+
+1	IRLL 014N          MOSFET, N-CH, 55V, 2,8A, 2,1W, SOT-223
+1	MCP 73831T-2ACI    Battery-Management-IC, Li-Ion, SOT-23-5
+1	P6SMB 6,8A SMD     TVS-Diode, Unidirectional, 6,8 V, 600 W, DO-214AA/SMB (Ersatztyp für 1.5SMC6.8CA)
+1	SKL 14 DIO         Schottkydiode, 40 V, 1 A, SOD-123 (Ersatztyp für MBR120)
+2	B 140 F            Schottkydiode, 40 V, 1 A, DO-214AC/SMA
+1	L 272 D            Operationsverstärker, 2-fach, SO-16
+1	RND 135-00184      LED, SMD, 0805, rot, 115 mcd
+
+5	X7R-G0603 100N     SMD-Vielschicht-Keramikkondensator 100N, 10%
+1	RND 1500603N2212   SMD-Kerko, 0603, 220 pF, 50 V, 5%, MLCC
+1	NPO 0603AAF 100P   SMD-Kerko, 0603, 100pF, 50V, 1%, MLCC, Automotive
+1	X7R-G1210 10       SMD-Vielschichtkondensator G1210 - 10µF 35V
+5	X5R-G0603 10/6     SMD-Vielschichtkondensator G0603 - 10µF 6,3V
+
+1	PAN ERJP08J1R0V    SMD-Widerstand, 1206, 1 Ohm, 660 mW, 5%
+1	VIS CRCW12064K7    SMD-Widerstand, 1206, 4,7 kOhm, 250 mW, 1%
+7	VIS CRCW120610K    SMD-Widerstand, 1206, 10 kOhm, 250 mW, 1%
+2	VIS CRCW12061K0    SMD-Widerstand, 1206, 1,0 kOhm, 250 mW, 1%
+1	ISA SMS-R220-1     SMD-Widerstand, 2512, 220 mOhm, 3 W, 1% (Achtung: 500 mOhm der originalen Partlist funktioniert nicht immer!)
+1	RND 1206 1 56K     SMD-Widerstand, 1206, 56 kOhm, 250 mW, 1%
+1	RND 1206 1 2,0K    SMD-Widerstand, 1206, 2,0 kOhm, 250 mW, 1%
+1	RND 1206 1 22K     SMD-Widerstand, 1206, 22 kOhm, 250 mW, 1%
+2	RND 1206 1 100K    SMD-Widerstand, 1206, 100 kOhm, 250 mW, 1%
+2	RND 1206 1 330K    SMD-Widerstand, 1206, 330 kOhm, 250 mW, 1%
+
+1	KEYSTONE 1042      Batteriehalter für 1 18650
+1	LUM 2486-01        Mini-USB Einbaukupplung,Typ B,5-pol,PCB,SMD (die kleinen Zapfen passen nicht sauber, abschneiden!)
+2	JST PH2P ST90S     JST - Stiftleiste, SMD, 90°, 1x2-polig - PH (Optional!)
+2	TASTER 3305B       Kurzhubtaster 6,6x7,4mm,Höhe:8,35mm,12V,horiz
+1	MS 243             Kippschalter 3A-125VAC, 1x Ein-Aus
+1	RND 205-00699      Cinch-Einbaubuchse, Farbcodierung rot, gewinkelt (Passt nicht ganz, nachbiegen!)
+1	NC NL188           Industriezelle, Li-Ion, 18650, 3,7 V, 3200 mAh, Button Top
+
+Restliche Bauteile: Ebay (Max1771, AP2112-3.3), Amazon (AI-Thinker ESP-12E, USB-Serial Adapter)
+
+Das Gehäuse war nicht verfügbar, lässt sich aus 3D Lasern (MDF oder Acryl 3mm).
+Dafür sind neben der Corel Datei auch noch folgende Bauteile nötig:
+
+4	DI 30MM            Distanzhülsen, Metall, 6-Kant, M3, 30mm
+2	VT DK 5MM          Distanzhülsen, Kunststoff, 5mm
+2	SK M3              Sechskantmuttern, M3, (100Stk!)
+8	SKL M3X10-50       PAN Head Schrauben, Kreuzschlitz, PZD, M3, 10mm
+2	SKL M3X16-50       PAN Head Schrauben, Kreuzschlitz, PZD, M3, 16mm
+
