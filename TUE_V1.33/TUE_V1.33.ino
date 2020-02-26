@@ -10,7 +10,8 @@
 //emm 21.11.19 V1.3.3 Update für ArdunioJson v6 https://arduinojson.org/v6/doc/upgrade/
 //                    Fix Aufrufe für Tasks https://www.bountysource.com/issues/45704564-build-error-no-matching-function-call
 //                    Ticker.h benötigt einen kleinen Fix in der Zeile 74: stumpf reinterpret_cast -> (void*)
-//                    cleanup
+//                    cleanup, Aufteilung in Tabs
+//                    Geräteseite (Webserver) hinzugefügt
 
 #define VERSION "V1.3.3"
 
@@ -18,7 +19,11 @@
 #include <TickerScheduler.h>      //https://github.com/Toshik/TickerScheduler
 #include <ESP8266WiFi.h>          //https://github.com/esp8266/Arduino
 #include <ESP8266WebServer.h>
+
+#include <DNSServer.h>
+#include <ESP8266WebServer.h>
 #include <WiFiManager.h>          //https://github.com/tzapu/WiFiManager
+
 #include <ArduinoJson.h>          //https://github.com/bblanchon/ArduinoJson
 //needed for NTP
 #include <TimeLib.h>              //https://github.com/PaulStoffregen/Time
@@ -29,7 +34,6 @@
 bool showWaitingInLog = false;
 bool showTimeInLog = false;
 bool clearConfigOnInit = false;
-bool alwaysChargeThePump = false;
 
 // Defines for Pins
 #define CHARGEPUMPENABLE 14       //SPI SCK = GPIO #14 (Charge Pump enable)
@@ -145,125 +149,12 @@ int nLength = 0;
 int time_hour = 0;
 int time_minute = 0;
 
-//
-
 //WiFiManager
 //Das Object wird auch noch im LOOP benötigt um die Config zu löschen....
 WiFiManager wifiManager;
 //Die beiden Parameter werden durch ein Callback verändert, deswegen müssen sie Global definiert sein
 WiFiManagerParameter custom_time_hour();
 WiFiManagerParameter custom_time_minute();
-
-//Task für den LED Status
-void * LEDTS(void)
-{
-  if (LEDStatusIntern != LEDStatus)
-  { //LED Status hat sich verändert, alle Counter reseten
-    LEDStatusCounter = 0;
-    LEDStatusIntern = LEDStatus;
-    if (LEDStatusIntern == LEDAusVorbereitet) LEDPeriodCounter = LEDAusVorbperiod;
-  }
-  if (LEDStatusIntern == LEDOff)
-  {
-    digitalWrite(BLED,  HIGH);
-  }
-  if (LEDStatusIntern == LEDOn)
-  {
-    digitalWrite(BLED,  LOW);
-  }
-  if (LEDStatusIntern == LEDBlinking)
-  {
-    if (!LEDStatusCounter) {
-      LEDStatusCounter = LEDblinkingcycle;
-      if (digitalRead(BLED)) digitalWrite(BLED, LOW);
-      else digitalWrite(BLED, HIGH);
-    }
-    else LEDStatusCounter--;
-  }
-  if (LEDStatusIntern == LEDAlive)
-  {
-    if (digitalRead(BLED))
-    { //LED ist aus
-      if (!LEDStatusCounter)
-      {
-        LEDStatusCounter = LEDalivetime;
-        digitalWrite(BLED, LOW);
-      }
-      else LEDStatusCounter--;
-    }
-    else
-    { //LED ist an
-      if (!LEDStatusCounter)
-      {
-        LEDStatusCounter = LEDalivecycle;
-        digitalWrite(BLED, HIGH);
-      }
-      else LEDStatusCounter--;
-    }
-  }
-  if (LEDStatusIntern == LEDBlinkOnce)
-  {
-    digitalWrite(BLED, LOW);
-    LEDStatus = LEDOff;
-  }
-  if (LEDStatus == LEDAusVorbereitet)
-  {
-    if (!LEDStatusCounter)
-    {
-      LEDStatusCounter = LEDAusVorbcycle;
-      if (digitalRead(BLED)) digitalWrite(BLED, LOW);
-      else digitalWrite(BLED, HIGH);
-    }
-    else LEDStatusCounter--;
-    if (!LEDPeriodCounter)
-    {
-      LEDStatus = LEDAlive;
-    }
-    else LEDPeriodCounter--;
-  }
-}
-
-//Task zum weiterstellen der Tochteruhr
-//Wird zyklisch aufgerufen und prüft, ob die empfangene Uhrzeit mit der angezeigten Uhrzeit übereinstimmt.
-//Stellt sie einen Unterschied fest, setzt sie das Flag "FlagTUStellen", dieses Flag wird durch die Task "TochterUhrStellen"
-//ausgewertet, bearbeitet und zurückgestellt.
-//Task verwaltet die Uhrzeit der Tochteruhr.
-void * tick(void)
-{
-  if ( !FlagTUStellen )
-  {
-    // Zeitzeichen mit Tochteruhr vergleichen, die Tochteruhr ist eine 12h Uhr. Das Zeitzeichen kann auch im 24h gesendet werden.
-    if ( ( clock_h == tochter_h && clock_m == tochter_m ) || ( clock_h - 12 == tochter_h && clock_m == tochter_m ) )
-    {
-      // Tochteruhr stimmt mit Zeitzeichen überein, nix machen
-    }
-    else
-    {
-      // Tochteruhr muss gestellt werden.
-      tochter_m++;
-      if (tochter_m == 60)
-      { // Stundensprung
-        tochter_h++;
-        tochter_m = 0;
-        if (tochter_h == 12)
-        { // Tagesprung
-          tochter_h = 0;
-        }
-      }
-      FlagTUStellen = true;
-      Serial.print("[tick()] Tochteruhr stellt auf Zeit: ");
-      Serial.print(tochter_h);
-      Serial.print(":");
-      Serial.print(tochter_m);
-      Serial.print(" Zeitzeichen: ");
-      Serial.print(clock_h);
-      Serial.print(":");
-      Serial.print(clock_m);
-      Serial.print(":");
-      Serial.println(clock_s);
-    }
-  }
-}
 
 //callback notifying us of the need to save config
 void saveConfigCallback(void)
@@ -313,6 +204,7 @@ void setup()
   //WiFi.setAutoReconnect(false);
   WiFi.persistent(true); // Wird gebraucht damit das Flash nicht zu oft beschrieben wird.
   WiFi.setAutoReconnect(true);
+  WiFi.hostname(String("TUE" + esp_chipid));
 
   Serial.println("Configuring Pins and Interrupts");
   //Pins konfigurieren
@@ -328,110 +220,20 @@ void setup()
   pinMode(CHARGEPUMPENABLE, OUTPUT);
   pinMode(CONFIGPB, INPUT);
   pinMode(BLED, OUTPUT);
-  if (alwaysChargeThePump)
-  {
-    digitalWrite(CHARGEPUMPENABLE, LOW);
-  }
-  else
-  {
-    digitalWrite(CHARGEPUMPENABLE, HIGH);
-  }
+  digitalWrite(CHARGEPUMPENABLE, HIGH);
   digitalWrite(BLED, HIGH);
 
   // start LED-Task
-  ts.add(4, 10, [&](void*) {
-    LEDTS();
-  }, nullptr, true);
+  ts.add(4, 10, [&](void*) { LEDTS(); }, nullptr, true);
+  
   LED(LEDBlinkOnce);         // LED einen Flash blinken -> 1. Blinkimpuls
-
-  //clean FS, for testing
-  if (clearConfigOnInit)
-  {
-    SPIFFS.format();
-    SPIFFS.remove("/config.json");
-    SPIFFS.remove("/config2.json");
-  }
-  //read configuration from FS json
-  Serial.print("mounting FS... ");
-  // Falls das Filesystem noch nicht formatiert ist, wird es hier automatisch gemacht.
-  if (SPIFFS.begin())
-  {
-    Serial.println("FS ok!");
-  }
-  else
-  {
-    SPIFFS.format();
-    Serial.println("FS formated");
-  }
+  
+  initFileSystem();
+  
   LED(LEDBlinkOnce);     // LED einen Flash blinken  -> 2. Blinkimpuls
 
-  if (SPIFFS.begin())
-  {
-    Serial.println("mounted file system");
-    if (SPIFFS.exists("/config.json"))
-    {
-      //file exists, reading and loading
-      Serial.println("reading config file");
-      File configFile = SPIFFS.open("/config.json", "r");
-      if (configFile)
-      {
-        Serial.println("opened config file");
-        DynamicJsonDocument json(2024);
-        DeserializationError ret = deserializeJson(json, configFile);
-        if (ret == DeserializationError::Ok)
-        {
-          Serial.println("deserialize config file...");
-          serializeJson(json, Serial);
-          Serial.println(" ");
-          Serial.print("read config...");
-          strcpy(ntpserver, json["ntp_server"]);
-          strcpy(mrc_multicast, json["mrc_multicast"]);
-          strcpy(mrc_port, json["mrc_port"]);
-          itoa(json["clock_hour"], c_clock_hour, 10);
-          itoa(json["clock_minute"], c_clock_minute, 10);
-          if (json["FlagTUStellglied"] == "true")
-          {
-            Serial.println("FlagTUStellglied = true");
-            FlagTUStellglied = true;
-            digitalWrite(TAKTA, LOW);
-            digitalWrite(TAKTB, LOW);
-          }
-          else
-          {
-            Serial.println("FlagTUStellglied = false");
-            FlagTUStellglied = false;
-            digitalWrite(TAKTA, HIGH);
-            digitalWrite(TAKTB, HIGH);
-          }
-        }
-        else
-        {
-          Serial.print("error parsing config: ");
-          Serial.println(ret.c_str());
-        }
-      }
-    }
-  }
-  else
-  {
-    Serial.println("failed to mount FS");
-    FlagTUStellglied = true;
-    digitalWrite(TAKTA, LOW);
-    digitalWrite(TAKTB, LOW);
-    Serial.println("failed to load json config");
-  }
-  //end read
-
-  //Interne Zeit mit der Tochteruhrzeit gleich setzen, sonst läuft uns die Uhr nach einem Neustart los...
-  tochter_h = atoi(c_clock_hour);
-  tochter_m = atoi(c_clock_minute);
-  sprintf(c_clock_hour, "%i", tochter_h);
-  sprintf(c_clock_minute, "%i", tochter_m);
-  Serial.print("Tochteruhr zeigt: ");
-  Serial.print(tochter_h);
-  Serial.print(":");
-  Serial.print(tochter_m);
-  Serial.println(" an.");
+  mountFileSystemAndReadConfig();
+  syncInternalTimeWithTochteruhr();
 
   // The extra parameters to be configured (can be either global or just in the setup)
   // After connecting, parameter.getValue() will get you the configured value
@@ -486,52 +288,15 @@ void setup()
   clock_h = tochter_h;
   clock_m = tochter_m;
 
-  //Init ADC
-  adcwert = analogRead(A0);   //aktuellen ADC Wert lesen
-  delay(100);                 //100ms warten
-  adcmittelwert = (adcwert + analogRead(A0)) / 2;
-  delay(100);                 //100ms warten
-  Serial.print("ADC Level = ");
-  Serial.print(adcwert);
-  Serial.print(" ADC Mittelwert = ");
-  Serial.println(adcmittelwert);
-
+  initAdc();
+  
   // starte Tasks
-  ts.add(0, 10, [&](void*) {
-    tick();
-  }, nullptr, true);
-  ts.add(2, 10, [&](void*) {
-    TochterUhrStellen();
-  }, nullptr, true);
+  ts.add(0, 10, [&](void*) { tick(); }, nullptr, true);
+  ts.add(2, 10, [&](void*) { TochterUhrStellen(); }, nullptr, true);
   if (showTimeInLog)
   { // reine Anzeige interner Werte, daher nur für debugging
-    ts.add(3, 1000, [&](void*) {
-      TochterUhr();
-    }, nullptr, true);
+    ts.add(3, 1000, [&](void*) { TochterUhr(); }, nullptr, true);
   }
-
-  if (adcmittelwert > adcconnectedio)
-  { //ADC Wird verwendet
-    Serial.println("ADC verdrahtet wird verwendet");
-    ts.add(1, 60000, [&](void*) {
-      UBat();
-    }, nullptr, true);
-    fESPrunning = true;
-    if (ts.enable(1))
-    {
-      Serial.println("TASK 1, UBat() enabled");
-    }
-    if (adcmittelwert < adcstopgrenzwert)
-    {
-      fESPrunning = false;
-      Serial.print("ADC: ESP ruht");
-      LEDStatus = LEDOff;                  //LED aus
-      ts.disable(0);
-      ts.disable(2);
-      ts.disable(3);
-    }
-  }
-  else Serial.println("ADC funktioniert nicht, wird nicht verwendet!");
 
   //fetches ssid and pass and tries to connect
   //if it does not connect it starts an access point with the specified name
@@ -593,6 +358,7 @@ void setup()
   Serial.println("local ip");
   Serial.println(WiFi.localIP());
   Serial.println(WiFi.SSID());
+  Serial.println(WiFi.hostname());
   //saving credentials only on change
   // WiFi.persistent(false);
   WiFi.setAutoReconnect(true);
@@ -614,6 +380,9 @@ void setup()
   dCounterToNTP = WaittimeNTP1Sync;        // Wie lange nach dem Aufstarten warten, bis die NTP Zeit übernommen wird?
 
   LED(LEDBlinkOnce);         // LED einen Flash blinken    -> 4. Blinkimpuls
+
+  setupWebServer();
+
   LED(LEDAlive);             // Ab jetzt zeigt die LED das Leben des Empfängers an..
 }
 
@@ -622,640 +391,28 @@ void loop()
   // loop checks for:
   // - MRCLOCK Telegramm, or
   // - NTP
+
   // MRCLOCK has priority to NTP telegramms, if there were no MRCLOCK Telegramm for WaittimeNTPSync [seconds] then, the
   // Slaveclock is syncronised to NTP Clock until the first MRCLOCK telegramm comes in...
-  // If a MRCLOCK Telegramm is recieved:
-  if (int packetsize = wifiUDPMRC.parsePacket())
-  {
-    dCounterToNTP = WaittimeNTPSync;           // Counter updaten
-    Serial.print("@.");
-    // We've received a packet, read the data from it
-    wifiUDPMRC.read(packetBuffer, packetsize); // read the packet into the buffer
-    //Search for Message like "clock=10:32:35"
-    for (int i = 0; i < sizeof(packetBuffer); i++)
-    {
-      if ( packetBuffer[i] == 'c' &&
-           packetBuffer[i + 1] == 'l' &&
-           packetBuffer[i + 2] == 'o' &&
-           packetBuffer[i + 3] == 'c' &&
-           packetBuffer[i + 4] == 'k' &&
-           packetBuffer[i + 5] == '='
-         )
-      {
-        c_time[0] = packetBuffer[i + 6];
-        c_time[1] = packetBuffer[i + 7];
-        c_time[2] = packetBuffer[i + 8];
-        c_time[3] = packetBuffer[i + 9];
-        c_time[4] = packetBuffer[i + 10];
-        c_time[5] = packetBuffer[i + 11];
-        c_time[6] = packetBuffer[i + 12];
-        c_time[7] = packetBuffer[i + 13];
-        c_time[8] = packetBuffer[i + 14];
-        // Time Char Array zerlegen
-        bool clear_h = true;
-        bool clear_m = false;
-        bool clear_s = false;
-
-        for (int ii = 0; ii < 15; ii++)
-        {
-          if ( !clear_h && !clear_m && clear_s)
-          {
-            if ( c_time[ii] == 0)
-            {
-              clear_m = false;
-              clear_s = false;
-              c_clock_hour[ii] = ' ';
-              c_clock_minute[ii] = ' ';
-              c_clock_sek[ii] = ' ';
-            }
-            else
-            {
-              c_clock_hour[ii] = ' ';
-              c_clock_minute[ii] = ' ';
-              c_clock_sek[ii] = c_time[ii];
-            }
-          }
-          if ( !clear_h && clear_m && !clear_s)
-          {
-            if ( c_time[ii] == ':')
-            {
-              clear_m = false;
-              clear_s = true;
-              c_clock_hour[ii] = ' ';
-              c_clock_minute[ii] = ' ';
-              c_clock_sek[ii] = ' ';
-            }
-            else
-            {
-              c_clock_hour[ii] = ' ';
-              c_clock_minute[ii] = c_time[ii];
-              c_clock_sek[ii] = ' ';
-            }
-          }
-          if ( clear_h && !clear_m && !clear_s)
-          {
-            if ( c_time[ii] == ':')
-            {
-              clear_h = false;
-              clear_m = true;
-              c_clock_hour[ii] = ' ';
-              c_clock_minute[ii] = ' ';
-              c_clock_sek[ii] = ' ';
-            }
-            else
-            {
-              c_clock_hour[ii] = c_time[ii];
-              c_clock_minute[ii] = ' ';
-              c_clock_sek[ii] = ' ';
-            }
-          }
-        }
-        clock_h = atoi(c_clock_hour);
-        clock_m = atoi(c_clock_minute);
-        clock_s = atoi(c_clock_sek);
-        Serial.print("Empfangenes Zeitzeichen: ");
-        Serial.print(clock_h);
-        Serial.print(":");
-        Serial.print(clock_m);
-        Serial.print(":");
-        Serial.print(clock_s);
-        Serial.print("; ");
-      }
-    }
-    //Search for Message like "speed=5"
-    for (int i = 0; i < sizeof(packetBuffer); i++)
-    {
-      if ( packetBuffer[i] == 's' &&
-           packetBuffer[i + 1] == 'p' &&
-           packetBuffer[i + 2] == 'e' &&
-           packetBuffer[i + 3] == 'e' &&
-           packetBuffer[i + 4] == 'd' &&
-           packetBuffer[i + 5] == '='
-         )
-      {
-        if (packetBuffer[i + 6] != 32)
-        {
-          c_speed[0] = packetBuffer[i + 6];
-        }
-        if (packetBuffer[i + 7] != 32) {
-          c_speed[1] = packetBuffer[i + 7];
-        }
-        if (packetBuffer[i + 8] != 32) {
-          c_speed[2] = packetBuffer[i + 8];
-        }
-        if (packetBuffer[i + 9] != 32) {
-          c_speed[3] = packetBuffer[i + 9];
-        }
-        c_speed[4] == NULL;
-        Serial.print("Speed = ");
-        clock_speed = atoi(c_speed);
-        Serial.print(clock_speed);
-      }
-    }
-    // recieving one message!
-    Serial.println("; Ende der Message");
-    flag_message_recieved = true;
-  }
-
+  checkForMrClockTelegramm();
+  
   // Ist der Taster gedrückt?
-  ConfigButton();
-
+  checkConfigButton();
+  
   // Haben wir noch Saft?
-  if (fDataSaving)
-  {
-    DataSaving();
-    fDataSaving = false;
-  }
+  checkSaveOnLowPower();
 
-  while (!fESPrunning)
-  { //While schleife solange wir keine Betriebsspannung haben
-    //Tasks bedienen
-    LEDStatus = LEDOff;   //LED aus
-    yield();
-    ts.update();
-    Serial.print("s");
-    LEDTS();
-    delay(1000);
+  // Läuft die CPU noch?
+  checkEspRunning();
 
-    // Haben wir noch Saft?
-    if (fDataSaving)
-    {
-      DataSaving();
-      fDataSaving = false;
-    }
-
-    // ChargePump abschalten
-    if (alwaysChargeThePump)
-    {
-      digitalWrite(CHARGEPUMPENABLE, LOW);
-    }
-    else
-    {
-      digitalWrite(CHARGEPUMPENABLE, HIGH);
-    }
-    //ESP abschalten
-    ESP.deepSleep(10);
-    delay(1000);
-  }
-
-  //Soll auf NTP-Zeitzeichenempfang umgeschaltet werden?
-  if (dCounterToNTP == 0)
-  {
-    //jetzt wird die NTP Zeit an der Tochteruhr angezeigt...
-    if (timeStatus() != timeNotSet)
-    {
-      if (now() != prevDisplay)
-      { //update the display only if time has changed
-        prevDisplay = now();
-        local = CE.toLocal(now(), &tcr);
-        Serial.print("Hour=");
-        Serial.print(hour(local), DEC);
-        Serial.print("Minute=");
-        Serial.print(minute(local), DEC);
-        Serial.print("Seconds=");
-        Serial.println(second(local), DEC);
-        clock_h = hour(local);
-        clock_m = minute(local);
-        clock_s = second(local);
-      }
-    }
-  }
-  else dCounterToNTP--;
+  // Soll auf NTP umgeschalten werden?
+  checkForSwitchToNtp();
 
   //Tasks bedienen
   yield();
   ts.update();
   if (showWaitingInLog) Serial.print(".");
   delay(10);
-}
 
-//Task zum gezwungenen Weiterstellen der Tochteruhr
-//Wird durch das Captive Portal aufgerufen und stellt sicher, dass die angeschlossene Tochteruhr
-//synchron zum internen Stellglied läuft.
-//FlagTUStellen muss false sein, beim Aufruf der Routine, sonst keine Auswirkung.
-void * forcetick(void)
-{
-  if ( !FlagTUStellen )
-  {
-    // Tochteruhr muss gestellt werden.
-    tochter_m++;
-    if (tochter_m == 60)
-    { // Stundensprung
-      tochter_h++;
-      tochter_m = 0;
-      if (tochter_h == 12)
-      { // Tagesprung
-        tochter_h = 0;
-      }
-    }
-    FlagTUStellen = true;
-    Serial.print("[forcetick()] Tochteruhr stellt auf Zeit: ");
-    Serial.print(tochter_h);
-    Serial.print(":");
-    Serial.print(tochter_m);
-    Serial.print(" Zeitzeichen: ");
-    Serial.print(clock_h);
-    Serial.print(":");
-    Serial.print(clock_m);
-    Serial.print(":");
-    Serial.println(clock_s);
-  }
-}
-
-
-void * TochterUhr(void)
-{
-  Serial.print("Tochteruhr zeigt: ");
-  Serial.print(tochter_h);
-  Serial.print(":");
-  Serial.println(tochter_m);
-}
-
-//Task gibt den Stelltakt an die Tochteruhr raus. Sobald das Flag "FlagTUStellen" gesetzt ist, wird ein Stellbefehl ausgegeben.
-//Das Flag wird nach der Ausgabe des Stellbefehls und dem Abschalten des Ausgangs wieder zurückgesetzt.
-//Abarbeitung nach einer Statemaschine. Somit kann die Zeitdauer des Ausgangsimpuls kontrolliert werden.
-//Sobald ein Takt ausgegeben werden soll, wird zuerst die Ladungspumpe eingeschaltet, nachher der Takt ausgeben, die
-//Ausgänge abgeschaltet und die Ladungspumpe wieder abgeschaltet, eher ein neuer Stelltakt ausgegeben werden kann.
-void * TochterUhrStellen(void)
-{
-  if (SM < 7 && SM > 0)
-  {
-    if (SM == 1)
-    {
-      // Warten auf FlagTUstellen
-      if ( FlagTUStellen )
-      {
-        SM = 2;
-        Serial.print("FlagTUStellen: ");
-        Serial.println("true");
-      }
-    }
-    if (SM == 2)
-    {
-      // State Chargepump init
-      digitalWrite(CHARGEPUMPENABLE, LOW);
-      SM = 3;
-      SMC = CHARGEPUMPTIME;
-    }
-    if (SM == 3)
-    {
-      // Warten auf Spannung
-      if (SMC == 0)
-      {
-        SM = 4;
-        SMC = TAKTTIME;
-        // Tick ausgeben, Ausgänge anschalten
-        if (FlagTUStellglied)
-        {
-          digitalWrite(TAKTA, LOW);
-          digitalWrite(TAKTB, HIGH);
-          Serial.println("FlagTUStellglied = +");
-          FlagTUStellglied = false;
-        }
-        else
-        {
-          digitalWrite(TAKTA, HIGH);
-          digitalWrite(TAKTB, LOW);
-          Serial.println("FlagTUStellglied = -");
-          FlagTUStellglied = true;
-        }
-      }
-      else
-      {
-        SMC--;
-      }
-    }
-    if (SM == 4)
-    {
-      // Tick ausgeben
-      if (SMC == 0)
-      {
-        SM = 5;
-        //Tick zurückstellen
-        if (!FlagTUStellglied)
-        {
-          digitalWrite(TAKTA, HIGH);
-          digitalWrite(TAKTB, HIGH);
-          Serial.println("FlagTUStellglied = -");
-        }
-        else
-        {
-          digitalWrite(TAKTA, LOW);
-          digitalWrite(TAKTB, LOW);
-          Serial.println("FlagTUStellglied = +");
-        }
-      }
-      else
-      {
-        SMC--;
-      }
-    }
-    if (SM == 5)
-    {
-      // ChargePump abschalten
-      if (alwaysChargeThePump)
-      {
-        digitalWrite(CHARGEPUMPENABLE, LOW);
-      }
-      else
-      {
-        digitalWrite(CHARGEPUMPENABLE, HIGH);
-      }
-      SM = 6 ;
-      SMC = TAKTWAITIME;
-    }
-    if (SM == 6)
-    {
-      // Warte State nach Stelltaktausgabe
-      if ( SMC == 0 )
-      {
-        SM = 1;
-        SMC = 0;
-        FlagTUStellen = false;
-      }
-      else
-      {
-        SMC--;
-      }
-    }
-  }
-  else
-  { // Init Statemaschine
-    SM = 1;
-    SMC = 0;
-  }
-}
-
-void DataSaving(void)
-{
-  Serial.println("Saving Data to File...");
-  DynamicJsonDocument json(2024);
-  json["ntp_server"] = ntpserver;
-  json["mrc_multicast"] = mrc_multicast;
-  json["mrc_port"] = mrc_port;
-  json["clock_hour"] = tochter_h;
-  json["clock_minute"] = tochter_m;
-  json["FlagTUStellglied"] = FlagTUStellglied;
-  File configFile = SPIFFS.open("/config.json", "w");
-  if (!configFile) {
-    Serial.println("Failed to open config file for writing!");
-  }
-  else
-  {
-    serializeJson(json, Serial);
-    size_t bytes = serializeJson(json, configFile);
-    Serial.print("... Done! [");
-    Serial.print(bytes, DEC);
-    Serial.println(" bytes]");
-  }
-
-  /* old json code
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& json = jsonBuffer.createObject();
-    json["ntp_server"] = ntpserver;
-    json["mrc_multicast"] = mrc_multicast;
-    json["mrc_port"] = mrc_port;
-    json["clock_hour"] = tochter_h;
-    json["clock_minute"] = tochter_m;
-    json["FlagTUStellglied"] = FlagTUStellglied;
-    File configFile = SPIFFS.open("/config.json", "w");
-    if (!configFile) {
-     Serial.println("failed to open config file for writing");
-    }
-    json.printTo(Serial);
-    json.printTo(configFile);
-  */
-
-  configFile.close();
-}
-
-void ConfigButton(void)
-{
-  if (digitalRead(CONFIGPB) == LOW)
-  {
-    if (LEDStatus == LEDAusVorbereitet)
-    { //ESP in den Deep-Sleep versetzen
-      Serial.println("Go to sleep!");
-      while (FlagTUStellen)
-      { //Prüfen, ob gerade eine Taktausgabe erfolgt, wenn ja dann darauf warten...
-        //Tasks bedienen
-        yield();
-        ts.update();
-        if (showWaitingInLog) Serial.print(".");
-        delay(10);
-      }
-      DataSaving();
-      //wifi_set_sleep_type(LIGHT_SLEEP_T);
-      system_deep_sleep(1000000);
-      //ESP.deepSleep(1000000);
-      delay(100);
-    }
-    if (FlagButtonPressed)
-    {
-      if (CounterButtonPressed == 0)
-      {
-        Serial.println("Config Button pressed!");
-        ts.remove(0);
-        while (digitalRead(CONFIGPB) == LOW)
-        {
-          yield();
-          ts.update();
-          if (showWaitingInLog) Serial.print(".");
-          delay(10);
-          LEDStatus = LEDBlinking;      // LED blinken lassen
-        }
-        // jetzt Config im Flash löschen
-        Serial.println("erasing");
-        Serial.printf("SPIFFS.remove = %d", SPIFFS.remove("/config.json"));
-        Serial.print(".");
-
-        WiFi.persistent(true);
-        delay(1000);
-        WiFi.setAutoReconnect(false);
-        delay(100);
-        WiFi.disconnect();
-        delay(100);
-        wifiManager.resetSettings();
-        ESP.eraseConfig();
-        delay(100);
-        Serial.print("..ESP Reset..");
-        delay(1000);
-        ESP.reset();
-        //ESP.restart();
-        delay(5000);
-      }
-      else CounterButtonPressed--;
-    }
-    else
-    {
-      FlagButtonPressed = true;
-      CounterButtonPressed = 300;
-      Serial.println("BP");
-
-      LEDStatus = LEDOn;        //Blaue LED anschalten
-    }
-  }
-  else
-  {
-    // Taste wird vor dem Ablaufen des CounterButtonPressed losgelassen, dann nur Daten ins Flash sichern
-    if (FlagButtonPressed)
-    {
-      FlagButtonPressed = false;
-      CounterButtonPressed = 0;
-      //LEDStatus = LEDAlive;       //Blaue LED zeigt Lebenszeichen
-      DataSaving();
-      ts.add(0, 10, [&](void*) {
-        tick();
-      }, nullptr, true);
-      LEDStatus = LEDAusVorbereitet;  //Jetzt kann man den TUE ausschalten
-    }
-  }
-}
-
-
-void ISRSaveData(void) {
-  Serial.println("Interrupt to save data!");
-  DataSaving();
-  digitalWrite(BLED, HIGH);
-  Serial.println("Data Saved");
-  detachInterrupt(INT);
-  ESP.deepSleep(10);
-}
-
-void LED(int LEDstatus) {
-  LEDStatus = LEDstatus;       // LED Status setzen dauert 1 sec.
-
-  yield();
-  ts.update();
-  delay(10);
-  yield();
-  ts.update();
-  delay(10);
-}
-
-void * UBat(void)
-{
-  Serial.print("[UBat()] ");
-  adcwert = analogRead(A0);    //aktuellen ADC Wert lesen
-  adcmittelwert = (adcmittelwert + analogRead(A0)) / 2;
-
-  if (!fESPrunning)
-  {
-    if (adcmittelwert > adcstartgrenzwert) {  //Wert ist über dem Startwert, ESP wieder hochfahren
-      fESPrunning = true;
-      Serial.print("ESP funktioniert");
-      LEDStatus = LEDAlive;                   //LED alive
-      ts.enable(0);
-      ts.enable(2);
-      ts.enable(3);
-    }
-  }
-  if (fESPrunning)
-  {
-    if (adcmittelwert < adcstopgrenzwert) {
-      fESPrunning = false;
-      Serial.print("ESP ruht");
-      fDataSaving = true;
-      LEDStatus = LEDOff;                   //LED aus
-      ts.disable(0);
-      ts.disable(2);
-      ts.disable(3);
-    }
-  }
-  Serial.print("Level = ");
-  Serial.print(adcwert);
-  Serial.print(" Mittelwert = ");
-  Serial.println(adcmittelwert);
-}
-
-/*-------- NTP code ----------*/
-
-const int NTP_PACKET_SIZE = 48; // NTP time is in the first 48 bytes of message
-byte packetBufferNTP[NTP_PACKET_SIZE]; //buffer to hold incoming & outgoing packets
-
-time_t getNtpTime()
-{
-  IPAddress ntpServerIP; // NTP server's ip address
-  while (wifiUDPNTP.parsePacket() > 0) ; // discard any previously received packets
-  Serial.println("Transmit NTP Request");
-  // get a random server from the pool
-  WiFi.hostByName(ntpserver, ntpServerIP);
-  Serial.print(ntpserver);
-  Serial.print(": ");
-  Serial.println(ntpServerIP);
-  sendNTPpacket(ntpServerIP);
-  uint32_t beginWait = millis();
-  while (millis() - beginWait < 1500) {
-    int size = wifiUDPNTP.parsePacket();
-    if (size >= NTP_PACKET_SIZE) {
-      Serial.println("Receive NTP Response");
-      wifiUDPNTP.read(packetBufferNTP, NTP_PACKET_SIZE);  // read packet into the buffer
-      unsigned long secsSince1900;
-      // convert four bytes starting at location 40 to a long integer
-      secsSince1900 =  (unsigned long)packetBufferNTP[40] << 24;
-      secsSince1900 |= (unsigned long)packetBufferNTP[41] << 16;
-      secsSince1900 |= (unsigned long)packetBufferNTP[42] << 8;
-      secsSince1900 |= (unsigned long)packetBufferNTP[43];
-      return secsSince1900 - 2208988800UL + timeZone * SECS_PER_HOUR;
-    }
-  }
-  Serial.println("No NTP Response :-(");
-  return 0; // return 0 if unable to get the time
-}
-
-// send an NTP request to the time server at the given address
-void sendNTPpacket(IPAddress &address)
-{
-  // set all bytes in the buffer to 0
-  memset(packetBufferNTP, 0, NTP_PACKET_SIZE);
-  // Initialize values needed to form NTP request
-  // (see URL above for details on the packets)
-  packetBufferNTP[0] = 0b11100011;   // LI, Version, Mode
-  packetBufferNTP[1] = 0;     // Stratum, or type of clock
-  packetBufferNTP[2] = 6;     // Polling Interval
-  packetBufferNTP[3] = 0xEC;  // Peer Clock Precision
-  // 8 bytes of zero for Root Delay & Root Dispersion
-  packetBufferNTP[12] = 49;
-  packetBufferNTP[13] = 0x4E;
-  packetBufferNTP[14] = 49;
-  packetBufferNTP[15] = 52;
-  // all NTP fields have been given values, now
-  // you can send a packet requesting a timestamp:
-  wifiUDPNTP.beginPacket(address, 123); //NTP requests are to port 123
-  wifiUDPNTP.write(packetBufferNTP, NTP_PACKET_SIZE);
-  wifiUDPNTP.endPacket();
-}
-
-void printTime(time_t t)
-{
-  sPrintI00(hour(t));
-  sPrintDigits(minute(t));
-  sPrintDigits(second(t));
-  Serial.print(' ');
-  Serial.print(dayShortStr(weekday(t)));
-  Serial.print(' ');
-  sPrintI00(day(t));
-  Serial.print(' ');
-  Serial.print(monthShortStr(month(t)));
-  Serial.print(' ');
-  Serial.print(year(t));
-  Serial.println(' ');
-}
-
-//Print an integer in "00" format (with leading zero).
-//Input value assumed to be between 0 and 99.
-void sPrintI00(int val)
-{
-  if (val < 10) Serial.print('0');
-  Serial.print(val, DEC);
-  return;
-}
-
-//Print an integer in ":00" format (with leading zero).
-//Input value assumed to be between 0 and 99.
-void sPrintDigits(int val)
-{
-  Serial.print(':');
-  if (val < 10) Serial.print('0');
-  Serial.print(val, DEC);
+  loopWebServer();
 }
